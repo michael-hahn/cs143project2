@@ -22,18 +22,18 @@ RC BTLeafNode::read(PageId pid, const PageFile& pf) {
 	bool* is_it_a_leaf = (bool*) leaf_tuple_pointer;
     this->isLeaf = *is_it_a_leaf;
     //cerr << "Read from leaf node: " << pid << " isLeaf at address: " << &is_it_a_leaf << endl;
-    cerr << "Read from leaf node: " << pid << " isLeaf: " << this->isLeaf << endl;
+    // cerr << "Read from leaf node: " << pid << " isLeaf: " << this->isLeaf << endl;
     is_it_a_leaf++;
     int* count = (int*) is_it_a_leaf;
     this->keyCount = *count;
     //cerr << "Read from leaf node: " << pid << " keyCount at address: " << &count << endl;    
-    cerr << "Read from leaf node: " << pid << " keyCount: " << this->keyCount << endl;
+    // cerr << "Read from leaf node: " << pid << " keyCount: " << this->keyCount << endl;
     c = this->buffer;
     c = c + 1020;
     PageId* ppid = (PageId*)c;
     this->sister = *ppid;
     //cerr << "Read from leaf node: " << pid << " sister at address: " << &ppid << endl;    
-    cerr << "Read from leaf node: " << pid << " sister: " << this->sister << endl;
+    // cerr << "Read from leaf node: " << pid << " sister: " << this->sister << endl;
 	return 0;
 }
     
@@ -384,7 +384,6 @@ RC BTLeafNode::setNextNodePtr(PageId pid) {
  */
 RC BTNonLeafNode::read(PageId pid, const PageFile& pf) {
 	RC rc;
-	//<!--SD
 	rc = pf.read(pid, this->buffer);
 	if (rc < 0) {
 		cerr << "BTreeindex::read failed because of read pf" << endl;
@@ -397,18 +396,17 @@ RC BTNonLeafNode::read(PageId pid, const PageFile& pf) {
 	bool* is_it_a_leaf = (bool*) leaf_tuple_pointer;
     this->isLeaf = *is_it_a_leaf;
     //cerr << "Read nonleaf node: " << pid << " isLeaf at address: " << &is_it_a_leaf << endl;
-    cerr << "Read nonleaf node: " << pid << " isLeaf returns: " << this->isLeaf << endl;
+    // cerr << "Read nonleaf node: " << pid << " isLeaf returns: " << this->isLeaf << endl;
     is_it_a_leaf++;
     int* count = (int*) is_it_a_leaf;
     this->keyCount = *count;
     //cerr << "Read nonleaf node: " << pid << " keyCount at address: " << &count << endl;
-    cerr << "Read nonleaf node: " << pid << " keyCount returns: " << this->keyCount << endl;
+    // cerr << "Read nonleaf node: " << pid << " keyCount returns: " << this->keyCount << endl;
     c = this->buffer;
     PageId* ppid = (PageId*)c;
     this->firstPointer = *ppid;
     //cerr << "Read nonleaf node: " << pid << " firstPointer at address: " << &ppid << endl;   
-    cerr << "Read nonleaf node: " << pid << " firstPointer returns: " << this->firstPointer << endl;
-    //SD-->
+    // cerr << "Read nonleaf node: " << pid << " firstPointer returns: " << this->firstPointer << endl;
     return 0;
 }
     
@@ -707,7 +705,8 @@ RC BTNonLeafNode::locateChildPtr(int searchKey, PageId& pid) {
 	PageId* pagePointer = (PageId*)c;
 	pagePointer++;
 	nl_tuple* tuplePointer = (nl_tuple*)pagePointer;//dynamic_cast<l_tuple*>(c);
-	for (i = 0; i < keyCount; i++) {
+	for (i = 0; i < keyCount; i++) 
+	{
 		if (i == 0 && tuplePointer->key > searchKey) {
 			char* d;
 			d = this->buffer;
@@ -734,7 +733,7 @@ RC BTNonLeafNode::locateChildPtr(int searchKey, PageId& pid) {
 			return -1;
 		}
 	}
-	return 0;
+	return -1;
 }
 
 /*
