@@ -219,7 +219,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
             //0 the contents of both strings are equal, >0 the first character does not match has a greater value in ptr1 than in ptr2
             case SelCond::EQ:
             {
-              if (rv != 0) 
+              if (rv == 0) 
               {
                 toPrintThis = false;
               }
@@ -227,7 +227,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
             }
             case SelCond::NE:
             {
-              if(rv == 0)
+              if(rv != 0)
               {
                 toPrintThis = false;
               }
@@ -235,7 +235,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
             }
             case SelCond::LT:
             {
-              if(rv >= 0)
+              if(rv <= 0)
               {
                 toPrintThis = false;
               }
@@ -243,7 +243,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
             }
             case SelCond::GT:
             {
-              if(rv <= 0)
+              if(rv >= 0)
               {
                 toPrintThis = false;
               }
@@ -251,7 +251,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
             }
             case SelCond::LE:
             {
-              if(rv > 0)
+              if(rv < 0)
               {
                 toPrintThis = false;
               }
@@ -259,7 +259,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
             }
             case SelCond::GE:
             {
-              if(rv < 0)
+              if(rv > 0)
               {
                 toPrintThis = false;
               }
@@ -427,7 +427,10 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
           //Now we start to compare the current entry with value if there is a value condition
           for (int j = break_time; j < organized_everything.size(); ++j)
           {
+            //cerr << endl << "We now comparing values" << endl;
+            //cerr << endl << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"<< endl << "The leafIterator pid before is: " << leafIterator.pid << endl;
             index_file.readForward(leafIterator, key_v, r_id);
+            //cerr << endl << "!%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"<< endl << "The leafIterator pid after is: " << leafIterator.pid << endl;
             rc = rf.read(r_id, key_v, value);
             if(rc < 0)
             {
@@ -442,7 +445,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
               //0 the contents of both strings are equal, >0 the first character does not match has a greater value in ptr1 than in ptr2
               case SelCond::EQ:
               {
-                if (rv != 0) 
+                if (rv == 0) 
                 {
                   toPrintThis = false;
                 }
@@ -450,7 +453,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
               }
               case SelCond::NE:
               {
-                if(rv == 0)
+                if(rv != 0)
                 {
                   toPrintThis = false;
                 }
@@ -586,6 +589,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
             break;
           }
           //check if it is time to break out; i.e. Have we hit the boundary?
+          //cerr << endl << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"<< endl << "The leafIterator pid is: " << leafIterator.pid << endl;
           if((SelCond::LT == organized_everything[0].comp) && (boundary.pid == leafIterator.pid) && (boundary.eid == leafIterator.eid))
           {
             cerr << endl << "$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$" << endl;
