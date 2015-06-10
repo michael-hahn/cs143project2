@@ -445,7 +445,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
               //0 the contents of both strings are equal, >0 the first character does not match has a greater value in ptr1 than in ptr2
               case SelCond::EQ:
               {
-                if (rv == 0) 
+                if (rv != 0) 
                 {
                   toPrintThis = false;
                 }
@@ -453,7 +453,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
               }
               case SelCond::NE:
               {
-                if(rv != 0)
+                if(rv == 0)
                 {
                   toPrintThis = false;
                 }
@@ -520,6 +520,13 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
           // print the tuple 
           if(toPrintThis)
           {
+            if (((SelCond::LT == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
+                        (boundary.pid == leafIterator.pid && boundary.eid > leafIterator.eid))) ||
+                    ((SelCond::LE == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
+                        (boundary.pid == leafIterator.pid && boundary.eid >= leafIterator.eid))))
+            {
+              count++;
+            }
             switch (attr) 
             {
               case 1:  // SELECT key
@@ -558,13 +565,13 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
             }
           }
 
-          if (((SelCond::LT == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
-                        (boundary.pid == leafIterator.pid && boundary.eid > leafIterator.eid))) ||
-                    ((SelCond::LE == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
-                        (boundary.pid == leafIterator.pid && boundary.eid >= leafIterator.eid))))
-          {
-            count++;
-          }
+          // if (((SelCond::LT == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
+          //               (boundary.pid == leafIterator.pid && boundary.eid > leafIterator.eid))) ||
+          //           ((SelCond::LE == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
+          //               (boundary.pid == leafIterator.pid && boundary.eid >= leafIterator.eid))))
+          // {
+          //   count++;
+          // }
 
           if (break_time >= organized_everything.size())
           {
@@ -631,7 +638,240 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
       case SelCond::GT:
       case SelCond::GE:
       {
-        index_file.locate(key_value, ic);
+        //To locate the entry
+        rc = index_file.locate(key_value, ic);
+        if (rc == RC_END_OF_TREE)
+        {
+          break;
+        }
+        if (rc == 0 && SelCond::GT == organized_everything[0].comp)
+        {
+          int useless_key;
+          RecordId useless_rid;
+          index_file.readForward(ic, useless_key, useless_rid);
+        }
+        // boundary.pid = ic.pid;
+        // boundary.eid = ic.eid;
+        leafIterator = ic;
+        bool break_right_away = false;
+        BTLeafNode l_node;
+        char reserved_area[1024];
+        int break_time = organized_everything.size();
+        while(true)
+        {
+          rc = l_node.read(leafIterator.pid, *index_file.getPageFile());
+          if(rc < 0)
+          {
+            cerr << endl << "Reading the first leaf node faield" << endl << endl;
+          }
+          PageId sister_Pid = l_node.get_sister_pointer();
+          int keyCount_thisNode = l_node.getKeyCount();
+          bool toPrintThis = true;
+          l_tuple * tuples_iterator = (l_tuple*) l_node.bufferPointer();
+          tuples_iterator += leafIterator.eid;
+          int key_v = tuples_iterator->key;
+          for (int i = 1; i < organized_everything.size(); ++i)
+          {
+            if (organized_everything[i].attr == 2)
+            {
+              break_time = i;
+              break;
+            }
+            key_value = atoi(organized_everything[i].value);
+            if(organized_everything[i].attr == 1)
+            {
+              switch(organized_everything[i].comp)
+              {
+                case SelCond::EQ:
+                {
+                  if (key_v != key_value)
+                  {
+                    toPrintThis = false;
+                  }
+                  break;//No print
+                }
+                case SelCond::NE:
+                {
+                  if (key_v == key_value)
+                  {
+                    toPrintThis = false;
+                  }
+                  break;
+                }
+                case SelCond::LT:
+                {
+                  if (key_v >= key_value)
+                  {
+                    toPrintThis = false;
+                  }
+                  break;
+                }
+                case SelCond::GT:
+                {
+                  if (key_v <= key_value)
+                  {
+                    toPrintThis = false;
+                  }
+                  break;
+                }
+                case SelCond::LE:
+                {
+                  if (key_v > key_value)
+                  {
+                    toPrintThis = false;
+                  }
+                  break;
+                }
+                case SelCond::GE:
+                {
+                  if (key_v < key_value)
+                  {
+                    toPrintThis = false;
+                  }
+                  break;
+                }
+              }
+            }
+          }
+          for (int j = break_time; j < organized_everything.size(); ++j)
+          {
+            index_file.readForward(leafIterator, key_v, r_id);
+            rc = rf.read(r_id, key_v, value);
+            if (rc < 0)
+            {
+              ;
+            }
+            int rv = strcmp(value.c_str(), organized_everything[j].value);
+            switch(organized_everything[j].comp)
+            {
+              case SelCond::EQ:
+              {
+                if (rv != 0) 
+                {
+                  toPrintThis = false;
+                }
+                break;
+              }
+              case SelCond::NE:
+              {
+                if(rv == 0)
+                {
+                  toPrintThis = false;
+                }
+                break;
+              }
+              case SelCond::LT:
+              {
+                if(rv >= 0)
+                {
+                  toPrintThis = false;
+                }
+                break;
+              }
+              case SelCond::GT:
+              {
+                if(rv <= 0)
+                {
+                  toPrintThis = false;
+                }
+                break;
+              }
+              case SelCond::LE:
+              {
+                if(rv > 0)
+                {
+                  toPrintThis = false;
+                }
+                break;
+              }
+              case SelCond::GE:
+              {
+                if(rv < 0)
+                {
+                  toPrintThis = false;
+                }
+                break;
+              }
+            }
+          }
+          if (break_time >= organized_everything.size())
+          {
+            if (attr == 2 || attr == 3)
+            {
+              r_id = tuples_iterator->rid;
+              rc = rf.read(r_id, key_v, value);
+              if(rc < 0)
+              {
+                ;
+              }
+            }
+          }
+          if(toPrintThis)
+          {
+            if (!(sister_Pid == -1 && leafIterator.eid >= keyCount_thisNode))
+            {
+              count++;
+            }
+            switch(attr)
+            {
+              case 1:
+              {
+                if (!(sister_Pid == -1 && leafIterator.eid >= keyCount_thisNode))
+                {
+                  fprintf(stdout, "%d\n", key_v);
+                  break;
+                }
+              }
+              case 2:
+              {
+                if (!(sister_Pid == -1 && leafIterator.eid >= keyCount_thisNode))
+                {
+                  fprintf(stdout, "%s\n", value.c_str());
+                  break;
+                }
+              }
+              case 3:  // SELECT *
+              {
+                if (!(sister_Pid == -1 && leafIterator.eid >= keyCount_thisNode))
+                {
+                  fprintf(stdout, "%d '%s'\n", key_v, value.c_str());
+                  break;
+                }
+              }
+            }
+          }
+          // if (!(sister_Pid == -1 && leafIterator.eid >= keyCount_thisNode))
+          // {
+          //   count++;
+          // }
+
+          if (break_time >= organized_everything.size())
+          {
+            if (leafIterator.eid < (keyCount_thisNode-1))
+            {
+              leafIterator.eid++;
+            }
+            else 
+            {
+              if (sister_Pid == -1 && leafIterator.eid == (keyCount_thisNode - 1))
+              {
+                break_right_away = true;
+              }
+              leafIterator.pid = sister_Pid;
+              leafIterator.eid = 0;
+            }
+          }
+
+          if (break_right_away)
+          {
+            break;
+          }
+
+          if (sister_Pid == -1 && leafIterator.eid > (keyCount_thisNode-1))
+          {
+            break;
+          }
+        }
         break;
       }
     }
@@ -639,6 +879,11 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
     // move to the next tuple
     next_:
     ;
+    if (attr == 4) 
+    {
+      fprintf(stdout, "%d\n", count);
+    }
+    rc = 0;
   }
 
   //old code from the function before time
