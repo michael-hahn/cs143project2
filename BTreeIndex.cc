@@ -434,6 +434,10 @@ RC BTreeIndex::locate(int searchKey, IndexCursor& cursor) {
 		cerr << "BTreeindex::locate failed because of read btl" << endl;
 		return rc;
 	}
+	if (btl.get_sister_pointer() == -1)
+	{
+		return RC_END_OF_TREE;
+	}
 	rc = btl.locate(searchKey, cursor.eid);
 	cursor.pid = pid;
 	cerr << endl << "The cursor is pointing at page " << cursor.pid << " , entry number " << cursor.eid << endl;
