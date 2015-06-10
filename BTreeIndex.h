@@ -18,7 +18,9 @@
 #include <vector>
 #include <queue>
 #include <iostream>
-             
+   
+#define RESERVED_PID 0
+          
 /**
  * The data structure to point to a particular entry at a b+tree leaf node.
  * An IndexCursor consists of pid (PageId of the leaf node) and 
@@ -95,6 +97,47 @@ class BTreeIndex {
 
 
   PageId find(int key, PageId& node_id);
+
+  //helper function
+  RC update_root_node()
+  {
+    RC rc;
+    char reserved_area[1024];
+    PageId * rootPid_;
+    rootPid_ = (PageId *) reserved_area;
+    *rootPid_ = rootPid;
+    rc = this->pf.write(RESERVED_PID, reserved_area);
+    if(rc < 0)
+    {
+      std::cerr << std::endl << "BTreeindex::init failed" << std::endl;
+    }
+    return rc;
+  }
+
+  RC getRootPidNow()
+  {
+    RC rc;
+    char reserved_area[1024];
+    rc = this->pf.read(RESERVED_PID, reserved_area);
+    if(rc < 0)
+    {
+      std::cerr << std::endl << "BTreeindex::init failed" << std::endl;
+    }
+    int * rootPid_;
+    rootPid_ = (int *) reserved_area;
+    this->rootPid = *rootPid_;
+    return rc;
+  }
+
+  PageId gimmerootPid()
+  {
+    return this->rootPid;
+  }
+
+  PageFile * getPageFile()
+  {
+    return &(this->pf);
+  }
 
   RC init();
   //Test
