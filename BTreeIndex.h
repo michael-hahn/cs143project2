@@ -109,7 +109,7 @@ class BTreeIndex {
     rc = this->pf.write(RESERVED_PID, reserved_area);
     if(rc < 0)
     {
-      std::cerr << std::endl << "BTreeindex::init failed" << std::endl;
+      //std::cerr << std::endl << "BTreeindex::init failed" << std::endl;
     }
     return rc;
   }
@@ -121,7 +121,7 @@ class BTreeIndex {
     rc = this->pf.read(RESERVED_PID, reserved_area);
     if(rc < 0)
     {
-      std::cerr << std::endl << "BTreeindex::init failed" << std::endl;
+      // std::cerr << std::endl << "BTreeindex::init failed" << std::endl;
     }
     int * rootPid_;
     rootPid_ = (int *) reserved_area;
@@ -146,15 +146,15 @@ class BTreeIndex {
     std::queue<PageId> q;
     std::queue<RecordId> leafQ;
     q.push(rootPid);
-    std::cerr << "Our root pid is " << rootPid << std::endl << std::endl;
-    std::cerr << "Size: " << q.size() << std::endl << std::endl;
-    std::cerr << "finish inserting pids" << std::endl;
+    // std::cerr << "Our root pid is " << rootPid << std::endl << std::endl;
+    // std::cerr << "Size: " << q.size() << std::endl << std::endl;
+    // std::cerr << "finish inserting pids" << std::endl;
     while (!q.empty()) {
       PageId current;
       current = q.front();
-      std::cerr << "Front pid is " << current << std::endl << std::endl;
+      //std::cerr << "Front pid is " << current << std::endl << std::endl;
       q.pop();
-      std::cerr << "Post-pop q size is: " << q.size() << std::endl << std::endl;
+      //std::cerr << "Post-pop q size is: " << q.size() << std::endl << std::endl;
       BTLeafNode btl;
       BTNonLeafNode btn;
       btl.read(current, pf);
