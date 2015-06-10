@@ -473,7 +473,11 @@ RC BTreeIndex::readForward(IndexCursor& cursor, int& key, RecordId& rid) {
 			return RC_END_OF_TREE;
 		}
 	}
-	cerr << endl << "The cursor is pointing at page " << cursor.pid << " , entry number " << cursor.eid << endl;
-	cerr << endl << "The key is " << key << " and the record is pointing at page " << rid.pid << " , slot " << rid.sid << endl << endl;
+	else 
+	{
+		cursor.eid++;
+	}
+	//cerr << endl << "The cursor is pointing at page " << cursor.pid << " , entry number " << cursor.eid << endl;
+	//cerr << endl << "The key is " << key << " and the record is pointing at page " << rid.pid << " , slot " << rid.sid << endl << endl;
 	return 0;
 }
