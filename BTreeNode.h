@@ -17,7 +17,7 @@
  #include <iostream>
  #include <queue>
 
-#define MAX_TUPLE_NUMBER 6
+#define MAX_TUPLE_NUMBER 84
 /**
  * BTLeafNode: The class representing a B+tree leaf node.
  */
@@ -140,6 +140,11 @@ class BTLeafNode {
         keyCount = 0;
         isLeaf = true;
         sister = -1;
+    }
+
+    int get_sister_pointer()
+    {
+        return this->sister;
     }
 
     //TEST
@@ -276,6 +281,10 @@ class BTNonLeafNode {
 
     PageId setFirstPointer(PageId newPointer) {
         return this->firstPointer = newPointer;
+    }
+
+    PageId getFirstPointer() {
+        return this->firstPointer;
     }
 
     void init() {
