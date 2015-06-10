@@ -19,7 +19,7 @@ using namespace std;
 BTreeIndex::BTreeIndex()
 {
 	//RC rc;
-    rootPid = pf.endPid();
+    // rootPid = pf.endPid();
     // BTNonLeafNode root;
     // root.init();
     // rc = root.write(rootPid, pf);
@@ -38,20 +38,29 @@ RC BTreeIndex::init() {
 	//BTNonLeafNode root;
     // root.init();
     RC rc;
+	char reserved_area[1024];
+    rc = this->pf.write(RESERVED_PID, reserved_area);
+    if(rc < 0)
+    {
+    	cerr << endl << "BTreeindex::init failed" << endl;
+    }
+    this->rootPid = this->pf.endPid();
+    int * rootPid_;
+    rootPid_ = (int *) reserved_area;
+    *rootPid_ = this->rootPid;
+    rc = this->pf.write(RESERVED_PID, reserved_area);
+    if(rc < 0)
+    {
+    	cerr << endl << "BTreeindex::init failed" << endl;
+    }
     BTLeafNode root;
     root.init();
     rc = root.write(rootPid, pf);
     if (rc < 0)
     {
-    	cerr << "BTreeIndex::init failed" << endl;
-    	return rc;
+    	cerr << endl << "BTreeIndex::init failed" << endl;
     }
-    //BTLeafNode firstLeaf;
-    //PageId firstPid = pf.endPid();
-    //root.setFirstPointer(firstPid);
-    //rc = root.write(rootPid, pf);
-    //firstLeaf.init();
-    //rc = firstLeaf.write(firstPid, pf);
+    return rc;
 }
 
 /*
@@ -180,9 +189,10 @@ RC BTreeIndex::insert(int key, const RecordId& rid) {
 			PageId RootPid = pf.endPid();
 			cerr << "Create a new nonleaf root node and give its pid " << RootPid << " now..." << endl << endl;
 			rootPid = RootPid;
+			rc = update_root_node();
 			// rc = pf.read(RootPid, NewRoot.bufferPointer());
 			if (rc < 0) {
-				cerr << "BTreeindex::insert failed because of read pf RootPid" << endl;
+				cerr << "If update " << endl;
 				this->ancestree.clear();
 				return rc;
 			}
@@ -328,6 +338,7 @@ RC BTreeIndex::insert(int key, const RecordId& rid) {
 					rc = newRoot.write(newRootPid, pf);
 					cerr << "Writing finished..." << endl << endl;
 					rootPid = newRootPid;
+					update_root_node();
 					newRoot.printOut();
 					if (rc < 0) {
 						cerr << "BTreeindex::insert failed because of write newRoot" << endl;
@@ -393,7 +404,13 @@ RC BTreeIndex::locate(int searchKey, IndexCursor& cursor) {
 	BTNonLeafNode btn;
 	BTLeafNode btl;
 	PageId pid;
-	rc = btn.read(rootPid, pf);
+	rc = getRootPidNow();
+	if (rc < 0) {
+		cerr << "BTreeindex::locate failed because of read btn" << endl;
+		return rc;
+	}
+	rc = btn.read(this->rootPid, pf);
+	cerr << "Reading from the rootPid " << this->rootPid << endl << endl;
 	if (rc < 0) {
 		cerr << "BTreeindex::locate failed because of read btn" << endl;
 		return rc;
@@ -419,6 +436,7 @@ RC BTreeIndex::locate(int searchKey, IndexCursor& cursor) {
 	}
 	rc = btl.locate(searchKey, cursor.eid);
 	cursor.pid = pid;
+	cerr << endl << "The cursor is pointing at page " << cursor.pid << " , entry number " << cursor.eid << endl;
 	return rc;
 }
 
@@ -455,5 +473,7 @@ RC BTreeIndex::readForward(IndexCursor& cursor, int& key, RecordId& rid) {
 			return RC_END_OF_TREE;
 		}
 	}
+	cerr << endl << "The cursor is pointing at page " << cursor.pid << " , entry number " << cursor.eid << endl;
+	cerr << endl << "The key is " << key << " and the record is pointing at page " << rid.pid << " , slot " << rid.sid << endl << endl;
 	return 0;
 }
