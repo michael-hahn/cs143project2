@@ -1,511 +1,766 @@
-/*
- * Copyright (C) 2008 by The Regents of the University of California
- * Redistribution of this file is permitted under the terms of the GNU
- * Public License (GPL).
- *
- * @author Junghoo "John" Cho <cho AT cs.ucla.edu>
- * @date 3/24/2008
- */
- 
-#include "BTreeIndex.h"
 #include "BTreeNode.h"
-#include <iostream>
 
 using namespace std;
 
 /*
- * BTreeIndex constructor
+ * Read the content of the node from the page pid in the PageFile pf.
+ * @param pid[IN] the PageId to read
+ * @param pf[IN] PageFile to read from
+ * @return 0 if successful. Return an error code if there is an error.
  */
-BTreeIndex::BTreeIndex()
-{
-	//RC rc;
-    // rootPid = pf.endPid();
-    // BTNonLeafNode root;
-    // root.init();
-    // rc = root.write(rootPid, pf);
-    // BTLeafNode firstLeaf;
-    // PageId firstPid = pf.endPid();
-    // root.setFirstPointer(firstPid);
-    // rc = root.write(rootPid, pf);
-    // firstLeaf.init();
-    // rc = firstLeaf.write(firstPid, pf);
-    // cout << rc;
-    // int i; 
-    // i = 1;
-}
-
-RC BTreeIndex::init() {
-	//BTNonLeafNode root;
-    // root.init();
-    RC rc;
-	char reserved_area[1024];
-    rc = this->pf.write(RESERVED_PID, reserved_area);
-    if(rc < 0)
-    {
-    	cerr << endl << "BTreeindex::init failed" << endl;
-    }
-    this->rootPid = this->pf.endPid();
-    int * rootPid_;
-    rootPid_ = (int *) reserved_area;
-    *rootPid_ = this->rootPid;
-    rc = this->pf.write(RESERVED_PID, reserved_area);
-    if(rc < 0)
-    {
-    	cerr << endl << "BTreeindex::init failed" << endl;
-    }
-    BTLeafNode root;
-    root.init();
-    rc = root.write(rootPid, pf);
-    if (rc < 0)
-    {
-    	cerr << endl << "BTreeIndex::init failed" << endl;
-    }
-    return rc;
-}
-
-/*
- * Open the index file in read or write mode.
- * Under 'w' mode, the index file should be created if it does not exist.
- * @param indexname[IN] the name of the index file
- * @param mode[IN] 'r' for read, 'w' for write
- * @return error code. 0 if no error
- */
-RC BTreeIndex::open(const string& indexname, char mode) {
-	return pf.open(indexname,mode);
-}
-
-/*
- * Close the index file.
- * @return error code. 0 if no error
- */
-RC BTreeIndex::close() {
-	return pf.close();
-}
-
-PageId BTreeIndex::find(int key, PageId& node_id) {
+RC BTLeafNode::read(PageId pid, const PageFile& pf) {
 	RC rc;
-	BTLeafNode bottom;
-	rc = bottom.read(node_id, this->pf);
-	//cout << "Bottom keyCount: " << bottom.getKeyCount() << endl;
-	if(rc < 0)
-	{
-		cerr << "BTreeIndex::find failed because of read" << endl;
-		return -1;
-	}
-	if (bottom.IsLeafNode())
-	{
-		return node_id;
-	}
-	BTNonLeafNode not_bottom;
-	rc = not_bottom.read(node_id, this->pf);
-	//cout << "Not Bottom keyCount: " << not_bottom.getKeyCount() << endl;
-	// rc = pf.read(node_id, not_bottom.bufferPointer());
+	//cerr << "Read from leaf node buffer " << &this->buffer << " where pid " << pid << " locates..." << endl;
+	rc = pf.read(pid, this->buffer);
 	if (rc < 0) {
-		cerr << "BTreeIndex::find failed because of read" << endl;
-		return -1;
-	}
-	ancestree.push_back(node_id);
-	PageId pid;
-	// char* c;
-	// c = not_bottom.bufferPointer();
-	// l_tuple* tuple = (l_tuple*)c;
- 	// tuple = tuple + MAX_TUPLE_NUMBER;
- 	// bool* b = (bool*) tuple;
-    if (not_bottom.IsLeafNode() != true) {
-		not_bottom.locateChildPtr(key, pid);
-		node_id = pid;
-		return find(key, node_id);
-	}
-	return node_id;
-}
-
-
-/*
- * Insert (key, RecordId) pair to the index.
- * @param key[IN] the key for the value inserted into the index
- * @param rid[IN] the RecordId for the record being inserted into the index
- * @return error code. 0 if no error
- */
-RC BTreeIndex::insert(int key, const RecordId& rid) {
-	cerr << "The rootPid is currently: " << this->rootPid << endl << endl;
-	RC rc;
-	PageId siblingPid;
-	PageId bottom_pid, non_bottom_pid;
-	non_bottom_pid = rootPid;
-	bottom_pid = find(key, non_bottom_pid);
-	cerr << "Find the leaf node to insert " << key << " at " << bottom_pid << endl;
-	if (bottom_pid < 0) {
-		cerr << "BTreeindex::insert failed because of find" << endl;
-		return -1;
-	}
-	if (bottom_pid == rootPid) {
-		cerr << "Root node is leaf node now..." << endl;
-		BTLeafNode rootLeaf;
-		cerr << "Reading the root node now..." << endl << endl;
-		rc = rootLeaf.read(bottom_pid, this->pf);
-		cerr << endl << "Read finished..." << endl << endl;
-		// rc = pf.read(bottom_pid, rootLeaf.bufferPointer());
-		if (rc < 0) {
-			cerr << "BTreeindex::insert failed because of read rootLeaf" << endl;
-			this->ancestree.clear();
-			return rc;
-		}
-		cerr << "Inserting " << key << " to the root node now..." << endl << endl;
-		rc = rootLeaf.insert(key, rid);
-		if (rc < 0) {
-			cerr << "Split nodes now and try inserting again..." << endl << endl;
-			BTLeafNode siblingLeaf;
-			int siblingLeafKey;
-			rc = rootLeaf.insertAndSplit(key, rid, siblingLeaf, siblingLeafKey);
-			if (rc < 0) {
-				cerr << "BTreeindex::insert failed because of insertAndSplit" << endl;
-				this->ancestree.clear();
-				return rc;
-			}
-			siblingPid = pf.endPid();
-			cerr << "Give the new sibiling node of the old root leaf node its pid... " << siblingPid << endl;
-			PageId nextPointer = rootLeaf.getNextNodePtr();
-			rootLeaf.setNextNodePtr(siblingPid);
-			siblingLeaf.setNextNodePtr(nextPointer);
-			cerr << "Writing to the sibling node " << siblingPid << " of the old root leaf node now..." << endl << endl;
-			rc = siblingLeaf.write(siblingPid, pf);
-			cerr << "Writing finished..." << endl << endl;
-			siblingLeaf.printOut();
-			if (rc < 0) {
-				cerr << "BTreeindex::insert failed because of write siblingLeaf" << endl;
-				this->ancestree.clear();
-				return rc;
-			}
-			cerr << "Writing to the old root leaf node " << bottom_pid << " now..." << endl << endl;
-			rc = rootLeaf.write(bottom_pid, pf);
-			cerr << "Writing finished..." << endl << endl;
-			rootLeaf.printOut();
-			if (rc < 0) {
-				cerr << "BTreeindex::insert failed because of write rootLeaf" << endl;
-				this->ancestree.clear();
-				return rc;
-			}
-			BTNonLeafNode NewRoot;
-			PageId RootPid = pf.endPid();
-			cerr << "Create a new nonleaf root node and give its pid " << RootPid << " now..." << endl << endl;
-			rootPid = RootPid;
-			rc = update_root_node();
-			// rc = pf.read(RootPid, NewRoot.bufferPointer());
-			if (rc < 0) {
-				cerr << "If update " << endl;
-				this->ancestree.clear();
-				return rc;
-			}
-			NewRoot.setFirstPointer(bottom_pid);
-			cerr << "Insert the nonleaf root node with key " << siblingLeafKey << "and pid " << siblingPid << endl << endl;
-			rc = NewRoot.insert(siblingLeafKey, siblingPid);
-			cerr << "Insertion finished..." << endl << endl;
-			if (rc < 0) {
-				cerr << "BTreeindex::insert failed because of insert NewRoot" << endl;
-				this->ancestree.clear();
-				return rc;
-			}
-			cerr << "Writing to the new nonleaf root node " << RootPid << " now..." << endl << endl;
-			rc = NewRoot.write(RootPid, pf);
-			cerr << "Writing finished..." << endl << endl;
-			NewRoot.printOut();
-			this->ancestree.clear();
-			return rc;
-		}
-		cerr << endl << "Insertion finished..." << endl << endl;
-		cerr << endl << "Writing the the root leaf node "<< bottom_pid << " now..." << endl << endl;
-		rc = rootLeaf.write(bottom_pid, pf);
-		cerr << endl << "Writing finished..." << endl << endl;
-		this->ancestree.clear();
-		rootLeaf.printOut();
+		cerr << "BTreeindex::read failed because of read pf" << endl;
 		return rc;
 	}
-	cerr << "Root node is no longer a leaf node now..." << endl << endl;
-	ancestree.push_back(bottom_pid);
-	BTLeafNode bottom;
-	cerr << "Reading the bottom leaf node " << bottom_pid << " to insert into now..." << endl << endl;
-	rc = bottom.read(bottom_pid, this->pf);
-	cerr << "Reading finished..." << endl << endl;
-	// rc = pf.read(bottom_pid, bottom.bufferPointer());
+	char* c = this->buffer;
+	l_tuple * leaf_tuple_pointer = (l_tuple * ) c;
+	leaf_tuple_pointer += MAX_TUPLE_NUMBER;
+	bool* is_it_a_leaf = (bool*) leaf_tuple_pointer;
+    this->isLeaf = *is_it_a_leaf;
+    //cerr << "Read from leaf node: " << pid << " isLeaf at address: " << &is_it_a_leaf << endl;
+    // cerr << "Read from leaf node: " << pid << " isLeaf: " << this->isLeaf << endl;
+    is_it_a_leaf++;
+    int* count = (int*) is_it_a_leaf;
+    this->keyCount = *count;
+    //cerr << "Read from leaf node: " << pid << " keyCount at address: " << &count << endl;    
+    // cerr << "Read from leaf node: " << pid << " keyCount: " << this->keyCount << endl;
+    c = this->buffer;
+    c = c + 1020;
+    PageId* ppid = (PageId*)c;
+    this->sister = *ppid;
+    //cerr << "Read from leaf node: " << pid << " sister at address: " << &ppid << endl;    
+    // cerr << "Read from leaf node: " << pid << " sister: " << this->sister << endl;
+	return 0;
+}
+    
+/*
+ * Write the content of the node to the page pid in the PageFile pf.
+ * @param pid[IN] the PageId to write to
+ * @param pf[IN] PageFile to write to
+ * @return 0 if successful. Return an error code if there is an error.
+ */
+RC BTLeafNode::write(PageId pid, PageFile& pf) {
+	RC rc;
+	//cerr << "Write to leaf node buffer address " << &this->buffer << " where pid " << pid << " locates..." << endl;
+	char* c = this->buffer;
+	l_tuple * leaf_tuple_pointer = (l_tuple * ) c;
+	leaf_tuple_pointer += MAX_TUPLE_NUMBER;
+	bool* is_it_a_leaf = (bool*) leaf_tuple_pointer;
+    *is_it_a_leaf = this->isLeaf;
+    //cerr << "Write to leaf node: " << pid << " isLeaf from address: " << &is_it_a_leaf << endl;     
+    cerr << "Write to leaf node: " << pid << " isLeaf: " << *is_it_a_leaf << endl; 
+    is_it_a_leaf++;
+    int* count = (int*) is_it_a_leaf;
+    *count = this->keyCount;
+    //cerr << "Write to leaf node: " << pid << " count from address: " << &count << endl; 
+    cerr << "Write to leaf node: " << pid << " count: " << *count << endl; 
+    c = this->buffer;
+    c = c + 1020;
+    PageId* ppid = (PageId*)c;
+    *ppid = this->sister;
+    //cerr << "Write to leaf node: " << pid << " sister from address: " << &ppid << endl;    
+    cerr << "Write to leaf node: " << pid << " sister: " << *ppid << endl; 
+	rc = pf.write(pid, this->buffer);
+	cerr << "A leaf node with pid " << pid << " is written to the pagefile" << endl;
+	cerr << "The key count in that node is now: " << this->keyCount << endl << endl; 
 	if (rc < 0) {
-		cerr << "BTreeindex::insert failed because of read" << endl;
-		this->ancestree.clear();
+		cerr << "BTreeindex::write failed because of write pf" << endl;
 		return rc;
 	}
-	cerr << "Inserting the key " << key << "to the leaf pid  "<< bottom_pid << " now..." << endl << endl;
-	rc = bottom.insert(key, rid);
-	if (rc < 0) {
-		cerr << "Try split the leaf node and insert again..." << endl << endl;
-		ancestree.pop_back();
-		BTLeafNode sibling;
-		int siblingKey;
-		cerr << "Spliting and inserting to the sibling node now... " << endl << endl;
-		rc = bottom.insertAndSplit(key, rid, sibling, siblingKey);
-		if (rc < 0) {
-			cerr << "BTreeindex::insert failed because of insertAndSplit" << endl;
-			this->ancestree.clear();
-			return rc;
-		}
-		siblingPid = pf.endPid();
-		cerr << "Sibling node is given pid " << siblingPid << endl << endl;
-		ancestree.push_back(siblingPid);
-		// char* c = bottom.bufferPointer();
-		// c = c + 1020;
-		// PageId* siblingPointer = (PageId*) c;
+	return 0;
+}
 
-		PageId pointerValue = bottom.getNextNodePtr();
-		bottom.setNextNodePtr(siblingPid);
-		// *siblingPointer = siblingPid;
-		// c = sibling.bufferPointer();
-		// c = c + 1020;
-		// siblingPointer = (PageId*) c;
-		// *siblingPointer = pointerValue;
-		sibling.setNextNodePtr(pointerValue);
-		cerr << "Writing to the new sibling node " << siblingPid << " now..." << endl << endl;
-		rc = sibling.write(siblingPid, pf);
-		cerr << "Writing finished..." << endl << endl;
-		sibling.printOut();
-		if (rc < 0) {
-			cerr << "BTreeindex::insert failed because of write sibling" << endl;
-			this->ancestree.clear();
-			return rc;
+/*
+ * Return the number of keys stored in the node.
+ * @return the number of keys in the node
+ */
+int BTLeafNode::getKeyCount() {
+	return this->keyCount;
+}
+
+/*
+ * Insert a (key, rid) pair to the node.
+ * @param key[IN] the key to insert
+ * @param rid[IN] the RecordId to insert
+ * @return 0 if successful. Return an error code if the node is full.
+ */
+RC BTLeafNode::insert(int key, const RecordId& rid) {
+	if (MAX_TUPLE_NUMBER <= keyCount) {
+		cerr << "BTreeindex::insert failed because node is full" << endl;
+		return RC_NODE_FULL;
+	}
+	int tupleIterator = 1;//what l_tuple the tuplePointer points to currently
+	char* c;
+	int currentKeyValue, nextKeyValue;
+	c = this->buffer;
+	l_tuple* tuplePointer = (l_tuple*)c;//dynamic_cast<l_tuple*>(c);
+	l_tuple temp, temp2;
+	if (keyCount < 1)
+	{
+		tuplePointer->key = key;
+		tuplePointer->rid = rid;
+		this->keyCount++;
+		return 0;
+	}
+	if (key < tuplePointer->key) {
+		temp.key = (tuplePointer+1)->key;
+		temp.rid = (tuplePointer+1)->rid;
+		(tuplePointer+1)->key = tuplePointer->key;
+		(tuplePointer+1)->rid = tuplePointer->rid;
+		//To insert the new l_tuple in the front of the buffer
+		tuplePointer->key = key;
+		tuplePointer->rid = rid;
+		tuplePointer++;
+		for (int i = 1; i < keyCount - 1; i++) {
+			temp2.key = (tuplePointer+1)->key;
+			temp2.rid = (tuplePointer+1)->rid;
+			(tuplePointer+1)->key = temp.key;
+			(tuplePointer+1)->rid = temp.rid;
+			temp = temp2;			
+			tuplePointer++;
 		}
-		cerr << "Writing to the old bottom node " << bottom_pid << " now..." << endl << endl;
-		rc = bottom.write(bottom_pid, pf);
-		cerr << "Writing finished..." << endl << endl;
-		bottom.printOut();
-		if (rc < 0) {
-			cerr << "BTreeindex::insert failed because of write bottom" << endl;
-			this->ancestree.clear();
-			return rc;
-		}
-		cerr << "Going to the nonleaf nodes now..." << endl << endl;
-		cerr << "We will need to go back " << ancestree.size() - 1 << " levels..." << endl << endl;
-		int an_s = ancestree.size();
-		for (int i = an_s - 1; i > 0; --i) {
-			cerr << "Starting the " << i << " level now..." << endl << endl;
-			BTNonLeafNode parent;
-			PageId loc = ancestree[i - 1];
-			cerr << "Reading " << i << " level non leaf node " << loc << " now..." << endl << endl;
-			rc = parent.read(loc, this->pf);
-			cerr << "Reading finished..." << endl << endl;
-			// rc = pf.read(ancestree[i - 1], parent.bufferPointer());
-			if (rc < 0) {
-				cerr << "BTreeindex::insert failed because of read 2" << endl;
-				this->ancestree.clear();
-				return rc;
-			}
-			cerr << "Inserting " << siblingKey << "to this nonleaf node " << loc << " now for indexing..." << endl << endl;
-			rc = parent.insert(siblingKey, ancestree[i]);
-			if (rc < 0) {
-				cerr << "This nonleaf node " << loc << " is full, try split it and insert again..." << endl << endl;
-				BTNonLeafNode siblingNonLeaf;
-				cerr << "Spliting the node " << loc << " and inserting now..." << endl << endl;
-				rc = parent.insertAndSplit(siblingKey, ancestree[i], siblingNonLeaf, siblingKey);
-				siblingPid = pf.endPid();
-				ancestree.pop_back();
-				ancestree.pop_back();
-				ancestree.push_back(siblingPid);
-				cerr << "The new nonleaf sibling has the pid " << siblingPid << endl << endl;
-				cerr << "Writing to the new nonleaf sibling node " << siblingPid << " now..." << endl << endl;
-				siblingNonLeaf.write(siblingPid, pf);
-				cerr << "Writing finsihed..." << endl << endl;
-				siblingNonLeaf.printOut();
-				cerr << "Writing to the old nonleaf node " << loc << " now..." << endl << endl;
-				rc = parent.write(loc, pf);
-				cerr << "Writing finished..." << endl << endl;
-				parent.printOut();
-				if (rc < 0) {
-					cerr << "BTreeindex::insert failed because of write parent" << endl;
-					this->ancestree.clear();
-					return rc;
-				}
-				//Root
-				if (i == 1) {
-					cerr << "Need to create a new root...." << endl << endl;
-					BTNonLeafNode newRoot;
-					PageId newRootPid;
-					newRootPid = pf.endPid();
-					cerr << "New root is given pid " << newRootPid << endl << endl;
-					// newRoot.read(newRootPid, pf);
-					// newRoot.insert(siblingKey, siblingPid);
-					// c = newRoot.bufferPointer();
-					// PageId* firstPid = (PageId*) c;
-					// *firstPid = ancestree[i - 1];
-					cerr << "Initializing the new root..." << endl << endl;
-					newRoot.initializeRoot(loc, siblingKey, siblingPid);
-					cerr << "Writing to the new root node " << newRootPid << " now..." << endl << endl;
-					rc = newRoot.write(newRootPid, pf);
-					cerr << "Writing finished..." << endl << endl;
-					rootPid = newRootPid;
-					update_root_node();
-					newRoot.printOut();
-					if (rc < 0) {
-						cerr << "BTreeindex::insert failed because of write newRoot" << endl;
-						this->ancestree.clear();
-						return rc;
+		//To move the last l_tuple in the empty l_tuple holder in the buffer
+		tuplePointer++;
+		tuplePointer->key = temp.key;
+		tuplePointer->rid = temp.rid;
+	}
+	else {
+		while (tupleIterator < keyCount) {
+			currentKeyValue = tuplePointer->key;
+			nextKeyValue = (tuplePointer+1)->key;
+			if (currentKeyValue <= key && nextKeyValue > key) {
+				if (tupleIterator < keyCount - 1) {
+					tuplePointer = tuplePointer + 1;//Move the pointer to where the l_tuple will be inserted
+					temp.key = (tuplePointer+1)->key;
+					temp.rid = (tuplePointer+1)->rid;
+					(tuplePointer+1)->key = tuplePointer->key;
+					(tuplePointer+1)->rid = tuplePointer->rid;
+					//To insert the new l_tuple in the right position 
+					tuplePointer->key = key;
+					tuplePointer->rid = rid;
+					tuplePointer++;
+					for (int i = 0; i < keyCount - tupleIterator - 2; i++) {
+						temp2.key = (tuplePointer+1)->key;
+						temp2.rid = (tuplePointer+1)->rid;
+						(tuplePointer+1)->key = temp.key;
+						(tuplePointer+1)->rid = temp.rid;
+						temp = temp2;			
+						tuplePointer++;
 					}
+					//To move the last l_tuple in the empty l_tuple holder in the buffer
+					tuplePointer++;
+					tuplePointer->key = temp.key;
+					tuplePointer->rid = temp.rid;
+					keyCount++;
+					return 0;
 				}
-				cerr << "Preparing to update a level above in the tree now..." << endl << endl;
+				else {//if we insert to the second to the last position
+					//save the last l_tuple in temp
+					temp.key = (tuplePointer+1)->key;
+					temp.rid = (tuplePointer+1)->rid;
+					//To insert the new l_tuple in the right position
+					tuplePointer++; 
+					tuplePointer->key = key;
+					tuplePointer->rid = rid;
+					//To move the previous last l_tuple to the end of the buffer
+					tuplePointer++;
+					tuplePointer->key = temp.key;
+					tuplePointer->rid = temp.rid;
+				}
 			}
 			else {
-				cerr << "Insertion finished..." << endl << endl;
-				cerr << "Writing to this nonleaf node " << loc << " now..." << endl << endl;
-				rc = parent.write(loc, pf);
-				cerr << "Writing finished..." << endl << endl;
-				parent.printOut();
-				if (rc < 0) {
-					cerr << "BTreeindex::insert failed because of write parent 2" << endl;
-					this->ancestree.clear();
-					return rc;
-				}
-				ancestree.pop_back();
-				cerr << "Updating nonleaf node is done..." << endl << endl;
-				break;
+				tupleIterator++;
+				tuplePointer++;
 			}
+		}
+		//Go to the next empty l_tuple holder and place the new l_tuple in it
+		tuplePointer++;
+		tuplePointer->key = key;
+		tuplePointer->rid = rid;
+	}
+	keyCount++;
+	return 0;
+}
+
+/*
+ * Insert the (key, rid) pair to the node
+ * and split the node half and half with sibling.
+ * The first key of the sibling node is returned in siblingKey.
+ * @param key[IN] the key to insert.
+ * @param rid[IN] the RecordId to insert.
+ * @param sibling[IN] the sibling node to split with. This node MUST be EMPTY when this function is called.
+ * @param siblingKey[OUT] the first key in the sibling node after split.
+ * @return 0 if successful. Return an error code if there is an error.
+ */
+RC BTLeafNode::insertAndSplit(int key, const RecordId& rid, 
+                              BTLeafNode& sibling, int& siblingKey) {
+	if (sibling.getKeyCount() != 0) {
+		cerr << "BTreeindex::insertAndSplit failed because of getKeyCount" << endl;
+		return RC_INVALID_PID;
+	}
+	//Update keyCount and determine the sibling's keyCount
+	//this->keyCount++;
+	RC rc;
+	// int sizeOfTuple = keyCount / 2;
+	// int sizeOfSiblingTuple = keyCount - sizeOfTuple;
+	// int numberOfIteration = sizeOfSiblingTuple;
+	// char* c;
+	// bool toInsert = true;
+	// c = this->buffer;
+	// l_tuple* tuplePointer = (l_tuple*)c;//dynamic_cast<l_tuple*>(c);
+	// int middleTuple = MAX_TUPLE_NUMBER / 2;
+	// tuplePointer = tuplePointer + middleTuple;//This is the 43rd l_tuple
+	// if (tuplePointer->key < key) {
+	// 	tuplePointer++;
+	// 	numberOfIteration--;
+	// 	rc = sibling.insert(key, rid);
+	// 	if (rc < 0) {
+	// 		cerr << "BTreeindex::insertAndSplit failed because of insert sibling" << endl;
+	// 		return rc;
+	// 	}
+	// 	toInsert = false;
+	// }
+	// for (int i = 0; i < numberOfIteration; i++) {
+	// 	rc = sibling.insert(tuplePointer->key, tuplePointer->rid);
+	// 	if (rc < 0) {
+	// 		cerr << "BTreeindex::insertAndSplit failed because of insert sibling 2" << endl;
+	// 		return rc;
+	// 	}
+	// 	tuplePointer++;
+	// }
+	// this->keyCount = toInsert ? sizeOfTuple - 1 : sizeOfTuple;
+	// if (toInsert) {
+	// 	rc = this->insert(key, rid);
+	// 	if (rc < 0) {
+	// 		cerr << "BTreeindex::insertAndSplit failed because of insert this" << endl;
+	// 		return rc;
+	// 	}
+	// }
+	// c = sibling.buffer;
+	// tuplePointer = (l_tuple*) c;//dynamic_cast<l_tuple*>(c);
+	// siblingKey = tuplePointer->key;
+	char* c;
+	c = this->buffer;
+	l_tuple* tuplePointer = (l_tuple*) c;
+	int middleTuple = MAX_TUPLE_NUMBER / 2;
+	tuplePointer = tuplePointer + middleTuple;
+	int totalKeys = this->keyCount;
+	if (tuplePointer->key < key) {
+		this->keyCount = this->keyCount / 2 + 1;
+		int numberOfIteration = totalKeys - this->keyCount;
+		tuplePointer = (l_tuple*)this->buffer;
+		tuplePointer += this->keyCount;
+		for (int i = 0; i < numberOfIteration; i++) {
+			rc = sibling.insert(tuplePointer->key, tuplePointer->rid);
+			if (rc < 0) {
+				cerr << "BTreeindex::insertAndSplit failed because of insert sibling 2" << endl;
+				return rc;
+			}
+			tuplePointer++;
+		}
+		rc = sibling.insert(key, rid);
+		if (rc < 0) {
+			cerr << "BTreeindex::insertAndSplit failed because of insert sibling 2" << endl;
+			return rc;
 		}
 	}
 	else {
-		cerr << "Insertion finished..." << endl << endl;
-		cerr << "Writing to the leaf node " << bottom_pid << " now..." << endl << endl;
-		rc = bottom.write(bottom_pid, pf);
-		cerr << "Writing finished..." << endl << endl;
-		bottom.printOut();
+		this->keyCount = this->keyCount / 2;
+		int numberOfIteration = totalKeys - this->keyCount;
+		tuplePointer = (l_tuple*)this->buffer;
+		tuplePointer += this->keyCount;
+		for (int i = 0; i < numberOfIteration; i++) {
+			rc = sibling.insert(tuplePointer->key, tuplePointer->rid);
+			if (rc < 0) {
+				cerr << "BTreeindex::insertAndSplit failed because of insert sibling 2" << endl;
+				return rc;
+			}
+			tuplePointer++;			
+		}
+		rc = this->insert(key, rid);
 		if (rc < 0) {
-			cerr << "BTreeindex::insert failed because of write bottom 2" << endl;
-			this->ancestree.clear();
+			cerr << "BTreeindex::insertAndSplit failed because of insert sibling 2" << endl;
 			return rc;
 		}
 	}
-	this->ancestree.clear();
+	c = sibling.buffer;
+	tuplePointer = (l_tuple*) c;//dynamic_cast<l_tuple*>(c);
+	siblingKey = tuplePointer->key;	
 	return 0;
 }
 
+
 /**
- * Run the standard B+Tree key search algorithm and identify the
- * leaf node where searchKey may exist. If an index entry with
- * searchKey exists in the leaf node, set IndexCursor to its location
- * (i.e., IndexCursor.pid = PageId of the leaf node, and
- * IndexCursor.eid = the searchKey index entry number.) and return 0.
- * If not, set IndexCursor.pid = PageId of the leaf node and
- * IndexCursor.eid = the index entry immediately after the largest
- * index key that is smaller than searchKey, and return the error
- * code RC_NO_SUCH_RECORD.
- * Using the returned "IndexCursor", you will have to call readForward()
- * to retrieve the actual (key, rid) pair from the index.
- * @param key[IN] the key to find
- * @param cursor[OUT] the cursor pointing to the index entry with
- *                    searchKey or immediately behind the largest key
- *                    smaller than searchKey.
- * @return 0 if searchKey is found. Othewise an error code
+ * If searchKey exists in the node, set eid to the index entry
+ * with searchKey and return 0. If not, set eid to the index entry
+ * immediately after the largest index key that is smaller than searchKey,
+ * and return the error code RC_NO_SUCH_RECORD.
+ * Remember that keys inside a B+tree node are always kept sorted.
+ * @param searchKey[IN] the key to search for.
+ * @param eid[OUT] the index entry number with searchKey or immediately
+                   behind the largest key smaller than searchKey.
+ * @return 0 if searchKey is found. Otherwise return an error code.
  */
-RC BTreeIndex::locate(int searchKey, IndexCursor& cursor) {
-	RC rc;
-	BTNonLeafNode btn;
-	BTLeafNode btl;
-	PageId pid;
-	rc = getRootPidNow();
-	if (rc < 0) {
-		cerr << "BTreeindex::locate failed because of read btn" << endl;
-		return rc;
-	}
-	rc = btl.read(this->rootPid, pf); //load the root as a leaf first
-	cerr << "Reading from the rootPid " << this->rootPid << endl << endl;
-	if (rc < 0) {
-		cerr << "BTreeindex::locate failed because of read btn" << endl;
-		return rc;
-	}
-
-	bool isLeaf = false;
-
-	//if the root is still a leaf, we only need to look within the leaf
-	if(btl.IsLeafNode() == true)
-	{	
-		cursor.pid = this->rootPid;
-		btl.locate(searchKey, cursor.eid);
-		return RC_END_OF_TREE;	
-	}
-	else
-	{
-		rc = btn.read(this->rootPid, pf); //load the root as a leaf first
-		cerr << "Reading from the rootPid " << this->rootPid << endl << endl;
-		if (rc < 0) {
-			cerr << "BTreeindex::locate failed because of read btn" << endl;
-			return rc;
-		}	
-	}
-
-	while (!isLeaf) {
-		rc = btn.locateChildPtr(searchKey, pid);
-		if (rc < 0) {
-			cerr << "BTreeindex::locate failed because of locateChildPtr" << endl;
-			return rc;
+RC BTLeafNode::locate(int searchKey, int& eid) {
+	char* c;
+	c = this->buffer;
+	l_tuple* tuplePointer = (l_tuple*)c;//dynamic_cast<l_tuple*>(c);
+	for(int i = 0; i < this->keyCount; i++){
+		if (searchKey == tuplePointer->key) {
+			eid = i;
+			return 0;
 		}
-		rc = btn.read(pid, pf);
-		if (rc < 0) {
-			cerr << "BTreeindex::locate failed because of read btn 2" << endl;
-			return rc;
+		else if (i == keyCount - 1 && searchKey != tuplePointer->key) {
+			eid = keyCount;
+			cerr << "BTreeindex::locate failed because no such record" << endl;
+			return RC_NO_SUCH_RECORD;
 		}
-		isLeaf = btn.IsLeafNode();
+		else if (searchKey < tuplePointer->key && (tuplePointer+1)->key > searchKey) {
+			eid = i;
+			cerr << "BTreeindex::locate failed because of no such record 2" << endl;
+			return RC_NO_SUCH_RECORD;
+		}
+		else {
+			tuplePointer++;
+		}
 	}
-	rc = btl.read(pid, pf);
-	if (rc < 0) {
-		cerr << "BTreeindex::locate failed because of read btl" << endl;
-		return rc;
-	}
-	cerr << endl << endl << "The input to locate is " << searchKey << endl; 
-	rc = btl.locate(searchKey, cursor.eid);
-	cerr << endl << endl << "We got that the pid is " << cursor.pid 
-	<< " and the entry id is " << cursor.eid << endl << endl;
-
-	cursor.pid = pid;
-	cerr << endl << "The cursor is pointing at page " << cursor.pid << " , entry number " << cursor.eid << endl;
-	if (btl.get_sister_pointer() == -1)
-	{
-		cerr << endl << "It gets in here" << endl;
-		return RC_END_OF_TREE;
-	}
-	return rc;
 }
 
 /*
- * Read the (key, rid) pair at the location specified by the index cursor,
- * and move foward the cursor to the next entry.
- * @param cursor[IN/OUT] the cursor pointing to an leaf-node index entry in the b+tree
- * @param key[OUT] the key stored at the index cursor location.
- * @param rid[OUT] the RecordId stored at the index cursor location.
- * @return error code. 0 if no error
+ * Read the (key, rid) pair from the eid entry.
+ * @param eid[IN] the entry number to read the (key, rid) pair from
+ * @param key[OUT] the key from the entry
+ * @param rid[OUT] the RecordId from the entry
+ * @return 0 if successful. Return an error code if there is an error.
  */
-RC BTreeIndex::readForward(IndexCursor& cursor, int& key, RecordId& rid) {
-	RC rc;
-	BTLeafNode btl;
-	rc = btl.read(cursor.pid, pf);
-	if (rc < 0) {
-		cerr << "BTreeindex::readForward failed because of read btl" << endl;		
-		return rc;
-	}
-	char* c = btl.bufferPointer();
-	l_tuple* tuple = (l_tuple*) c;
-	tuple += cursor.eid;
-	if (cursor.eid >= btl.getKeyCount()) {
-		cerr << "BTreeindex::locate failed because of getKeyCount" << endl;
+RC BTLeafNode::readEntry(int eid, int& key, RecordId& rid) {
+	if (eid >= keyCount) {
+		cerr << "BTreeindex::readEntry failed because invalid cursor" << endl;
 		return RC_INVALID_CURSOR;
 	}
-	key = tuple->key;
-	rid = tuple->rid;
-	if (cursor.eid == btl.getKeyCount() - 1) {
-		cursor.pid = btl.getNextNodePtr();
-		cursor.eid = 0;
-		if (cursor.pid == -1) {
-			cerr << "BTreeindex::locate failed because it is end of tree" << endl;
-			return RC_END_OF_TREE;
-		}
+	char* c;
+	c = this->buffer;
+	l_tuple* tuplePointer = (l_tuple*)c;//dynamic_cast<l_tuple*>(c);
+	for (int i = 0; i < eid; i++) {
+		tuplePointer++;
 	}
-	else 
-	{
-		cursor.eid++;
-	}
-	//cerr << endl << "The cursor is pointing at page " << cursor.pid << " , entry number " << cursor.eid << endl;
-	//cerr << endl << "The key is " << key << " and the record is pointing at page " << rid.pid << " , slot " << rid.sid << endl << endl;
+	key = tuplePointer->key;
+	rid = tuplePointer->rid;
 	return 0;
 }
+
+/*
+ * Return the pid of the next slibling node.
+ * @return the PageId of the next sibling node 
+ */
+PageId BTLeafNode::getNextNodePtr() {
+	return this->sister;
+}
+
+/*
+ * Set the pid of the next slibling node.
+ * @param pid[IN] the PageId of the next sibling node 
+ * @return 0 if successful. Return an error code if there is an error.
+ */
+RC BTLeafNode::setNextNodePtr(PageId pid) {
+	// char* c;
+	// c = this->buffer;
+	// c = c + 1020;
+	// PageId* nodePointer = (PageId*)c;
+	// *nodePointer = pid;
+	this->sister = pid;
+	return 0;
+}
+
+/*
+ * Read the content of the node from the page pid in the PageFile pf.
+ * @param pid[IN] the PageId to read
+ * @param pf[IN] PageFile to read from
+ * @return 0 if successful. Return an error code if there is an error.
+ */
+RC BTNonLeafNode::read(PageId pid, const PageFile& pf) {
+	RC rc;
+	rc = pf.read(pid, this->buffer);
+	if (rc < 0) {
+		cerr << "BTreeindex::read failed because of read pf" << endl;
+		return rc;
+	}
+	//cerr << "Read from nonleaf node buffer address " << &this->buffer << " where pid " << pid << " locates..." << endl;
+	char* c = this->buffer;
+	l_tuple * leaf_tuple_pointer = (l_tuple * ) c;
+	leaf_tuple_pointer += MAX_TUPLE_NUMBER;
+	bool* is_it_a_leaf = (bool*) leaf_tuple_pointer;
+    this->isLeaf = *is_it_a_leaf;
+    //cerr << "Read nonleaf node: " << pid << " isLeaf at address: " << &is_it_a_leaf << endl;
+    // cerr << "Read nonleaf node: " << pid << " isLeaf returns: " << this->isLeaf << endl;
+    is_it_a_leaf++;
+    int* count = (int*) is_it_a_leaf;
+    this->keyCount = *count;
+    //cerr << "Read nonleaf node: " << pid << " keyCount at address: " << &count << endl;
+    // cerr << "Read nonleaf node: " << pid << " keyCount returns: " << this->keyCount << endl;
+    c = this->buffer;
+    PageId* ppid = (PageId*)c;
+    this->firstPointer = *ppid;
+    //cerr << "Read nonleaf node: " << pid << " firstPointer at address: " << &ppid << endl;   
+    // cerr << "Read nonleaf node: " << pid << " firstPointer returns: " << this->firstPointer << endl;
+    return 0;
+}
+    
+/*
+ * Write the content of the node to the page pid in the PageFile pf.
+ * @param pid[IN] the PageId to write to
+ * @param pf[IN] PageFile to write to
+ * @return 0 if successful. Return an error code if there is an error.
+ */
+RC BTNonLeafNode::write(PageId pid, PageFile& pf) {
+	RC rc;
+	//<!--SD
+	//cerr << "Write to nonleaf node buffer address " << &this->buffer << " where pid " << pid << " locates..." << endl; 
+	char* c = this->buffer;
+	l_tuple * leaf_tuple_pointer = (l_tuple * ) c;
+	leaf_tuple_pointer += MAX_TUPLE_NUMBER;
+	bool* is_it_a_leaf = (bool*) leaf_tuple_pointer;
+    *is_it_a_leaf = this->isLeaf;
+    //cerr << "Write to Nonleaf node: " << pid << "isLeaf from address: " << &is_it_a_leaf << endl;    
+    cerr << "Write to Nonleaf node: " << pid << "isLeaf: " << *is_it_a_leaf << endl;
+    is_it_a_leaf++;
+    int* count = (int*) is_it_a_leaf;
+    *count = this->keyCount;
+    //cerr << "Write to Nonleaf node: " << pid << "count from address: " << &count << endl;    
+    cerr << "Write to Nonleaf node: " << pid << "count: " << *count << endl;
+    c = this->buffer;
+    PageId* ppid = (PageId*)c;
+    *ppid = this->firstPointer;
+    //cerr << "Write to Nonleaf node: " << pid << "firstPointer from address: " << &ppid << endl;   
+    cerr << "Write to Nonleaf node: " << pid << "firstPointer: " << *ppid << endl;
+    //SD-->
+	rc = pf.write(pid, this->buffer);
+	cerr << "A non leaf node with pid " << pid << " is written to the pagefile" << endl;
+	cerr << "The key count in that node is now: " << this->keyCount << endl << endl; 
+	if (rc < 0) {
+		cerr << "BTreeindex::write failed because of write pf" << endl;
+		return rc;
+	}
+	return 0;
+}
+
+/*
+ * Return the number of keys stored in the node.
+ * @return the number of keys in the node
+ */
+int BTNonLeafNode::getKeyCount(){
+	return this->keyCount;
+}
+
+
+/*
+ * Insert a (key, pid) pair to the node.
+ * @param key[IN] the key to insert
+ * @param pid[IN] the PageId to insert
+ * @return 0 if successful. Return an error code if the node is full.
+ */
+RC BTNonLeafNode::insert(int key, PageId pid) {
+	if (MAX_TUPLE_NUMBER <= keyCount) {
+		cerr << "BTreeindex::insert failed because node is full" << endl;
+		return RC_NODE_FULL;
+	}
+	int tupleIterator = 1;//what nl_tuple the tuplePointer points to currently
+	char* c;
+	int currentKeyValue, nextKeyValue;
+	c = this->buffer;
+	//skip the left most page pointer
+	PageId* pagePointer = (PageId*)c;
+	pagePointer++;
+	nl_tuple* tuplePointer = (nl_tuple*)pagePointer;//dynamic_cast<nl_tuple*>(c);
+	nl_tuple temp, temp2;
+	if (keyCount < 1)
+	{
+		tuplePointer->key = key;
+		tuplePointer->pid = pid;
+		this->keyCount++;
+		return 0;
+	}
+	if (key < tuplePointer->key) {
+		temp.key = (tuplePointer+1)->key;
+		temp.pid = (tuplePointer+1)->pid;
+		(tuplePointer+1)->key = tuplePointer->key;
+		(tuplePointer+1)->pid = tuplePointer->pid;
+		//To insert the new nl_tuple in the front of the buffer
+		tuplePointer->key = key;
+		tuplePointer->pid = pid;
+		tuplePointer++;
+		for (int i = 1; i < keyCount - 1; i++) {
+			temp2.key = (tuplePointer+1)->key;
+			temp2.pid = (tuplePointer+1)->pid;
+			(tuplePointer+1)->key = temp.key;
+			(tuplePointer+1)->pid = temp.pid;
+			temp = temp2;			
+			tuplePointer++;
+		}
+		//To move the last nl_tuple in the empty nl_tuple holder in the buffer
+		tuplePointer++;
+		tuplePointer->key = temp.key;
+		tuplePointer->pid = temp.pid;
+	}
+	else {
+		if (keyCount == 1) {
+			(tuplePointer+1)->key = key;
+			(tuplePointer+1)->pid = pid;
+			keyCount++;
+			return 0;
+		}
+		while (tupleIterator < keyCount) {
+			currentKeyValue = tuplePointer->key;
+			nextKeyValue = (tuplePointer+1)->key;
+			if (currentKeyValue <= key && nextKeyValue > key) {
+				if (tupleIterator < keyCount - 1) {
+					tuplePointer = tuplePointer + 1;//Move the pointer to where the nl_tuple will be inserted
+					temp.key = (tuplePointer+1)->key;
+					temp.pid = (tuplePointer+1)->pid;
+					(tuplePointer+1)->key = tuplePointer->key;
+					(tuplePointer+1)->pid = tuplePointer->pid;
+					//To insert the new nl_tuple in the right position 
+					tuplePointer->key = key;
+					tuplePointer->pid = pid;
+					tuplePointer++;
+					for (int i = 0; i < keyCount - tupleIterator - 2; i++) {
+						temp2.key = (tuplePointer+1)->key;
+						temp2.pid = (tuplePointer+1)->pid;
+						(tuplePointer+1)->key = temp.key;
+						(tuplePointer+1)->pid = temp.pid;
+						temp = temp2;			
+						tuplePointer++;
+					}
+					//To move the last nl_tuple in the empty nl_tuple holder in the buffer
+					tuplePointer++;
+					tuplePointer->key = temp.key;
+					tuplePointer->pid = temp.pid;
+					keyCount++;
+					return 0;
+				}
+				else {//if we insert to the second to the last position
+					//save the last nl_tuple in temp
+					temp.key = (tuplePointer+1)->key;
+					temp.pid = (tuplePointer+1)->pid;
+					//To insert the new nl_tuple in the right position
+					tuplePointer++; 
+					tuplePointer->key = key;
+					tuplePointer->pid = pid;
+					//To move the previous last nl_tuple to the end of the buffer
+					tuplePointer++;
+					tuplePointer->key = temp.key;
+					tuplePointer->pid = temp.pid;
+				}
+			}
+			else {
+				tupleIterator++;
+				tuplePointer++;
+			}
+		}
+		//Go to the next empty nl_tuple holder and place the new nl_tuple in it
+		tuplePointer++;
+		tuplePointer->key = key;
+		tuplePointer->pid = pid;
+	}
+	keyCount++;
+	return 0;
+}
+
+/*
+ * Insert the (key, pid) pair to the node
+ * and split the node half and half with sibling.
+ * The middle key after the split is returned in midKey.
+ * @param key[IN] the key to insert
+ * @param pid[IN] the PageId to insert
+ * @param sibling[IN] the sibling node to split with. This node MUST be empty when this function is called.
+ * @param midKey[OUT] the key in the middle after the split. This key should be inserted to the parent node.
+ * @return 0 if successful. Return an error code if there is an error.
+ */
+RC BTNonLeafNode::insertAndSplit(int key, PageId pid, BTNonLeafNode& sibling, int& midKey) {
+	if (sibling.getKeyCount() != 0) {
+		return RC_INVALID_PID;
+	}
+	//Update keyCount and determine the sibling's keyCount
+	// this->keyCount++;
+	// RC rc;
+	// int sizeOfTuple = keyCount / 2;
+	// int sizeOfSiblingTuple = keyCount - sizeOfTuple;
+	// int numberOfIteration = sizeOfSiblingTuple;
+	// char* c;
+	// bool toInsert = true;
+	// c = this->buffer;
+	// //skip the left most page pointer
+	// PageId* pagePointer = (PageId*)c;
+	// pagePointer++;
+	// nl_tuple* tuplePointer = (nl_tuple*)pagePointer;//dynamic_cast<l_tuple*>(c);
+	// int middleTuple = MAX_TUPLE_NUMBER / 2;
+	// tuplePointer = tuplePointer + MAX_TUPLE_NUMBER/2;//This is the 43rd l_tuple
+	// if (tuplePointer->key < key) {
+	// 	tuplePointer++;
+	// 	numberOfIteration--;
+	// 	rc = sibling.insert(key, pid);
+	// 	if (rc < 0) {
+	// 		cerr << "BTreeindex::insertAndSplit failed because of insert sibling" << endl;
+	// 		return rc;
+	// 	}
+	// 	toInsert = false;
+	// }
+	// for (int i = 0; i < numberOfIteration; i++) {
+	// 	rc = sibling.insert(tuplePointer->key, tuplePointer->pid);
+	// 	if (rc < 0) {
+	// 		cerr << "BTreeindex::insertAndSplit failed because of insert sibling 2" << endl;
+	// 		return rc;
+	// 	}
+	// 	tuplePointer++;
+	// }
+	// this->keyCount = toInsert ? sizeOfTuple - 1 : sizeOfTuple;
+	// if (toInsert) {
+	// 	rc = this->insert(key, pid);
+	// 	if (rc < 0) {
+	// 		cerr << "BTreeindex::insertAndSplit failed because of insert this" << endl;
+	// 		return rc;
+	// 	}
+	// }
+	// c = sibling.buffer;
+	// pagePointer = (PageId*) c;
+	// pagePointer++;
+	// tuplePointer = (nl_tuple*) pagePointer;//dynamic_cast<l_tuple*>(c);
+	// midKey = tuplePointer->key;
+	// return 0;
+	RC rc;
+	char * c = this->buffer;
+	PageId* pagePointer = (PageId*)c;
+	pagePointer++;
+	nl_tuple* tuplePointer = (nl_tuple*)pagePointer;
+	int middleTuple = MAX_TUPLE_NUMBER / 2;
+	int oldTotalSize = this->keyCount;
+	tuplePointer += middleTuple;
+	if (tuplePointer->key > key) {
+		int last_key_in_orig_after_split = (tuplePointer-1)->key;
+		PageId last_pageId_in_orig_after_split = (tuplePointer-1)->pid;
+		int siblingSize = oldTotalSize / 2;
+		for (int i = 0; i < siblingSize; i++) {
+			rc = sibling.insert(tuplePointer->key, tuplePointer->pid);
+			if (rc < 0) {
+				cerr << "BTreeindex::insertAndSplit failed because of insert this" << endl;
+				return rc;
+			}
+			tuplePointer++;
+		}
+		this->keyCount = oldTotalSize - siblingSize;
+		if (last_key_in_orig_after_split > key) {
+			sibling.setFirstPointer(last_pageId_in_orig_after_split);
+			rc = this->insert(key, pid);
+			if (rc < 0) {
+				cerr << "BTreeindex::insertAndSplit failed because of insert this" << endl;
+				return rc;
+			}
+			this->keyCount--;
+			midKey = last_key_in_orig_after_split;
+		}
+		else {
+			midKey = key;
+			sibling.setFirstPointer(pid);
+		}
+	}
+	else {
+		midKey = tuplePointer->key;
+		sibling.setFirstPointer(tuplePointer->pid);
+		tuplePointer++;
+		int siblingSize = oldTotalSize / 2 - 1;
+		for (int i = 0; i < siblingSize - 1; i++) {
+			rc = sibling.insert(tuplePointer->key, tuplePointer->pid);
+			if (rc < 0) {
+				cerr << "BTreeindex::insertAndSplit failed because of insert this" << endl;
+				return rc;
+			}
+			tuplePointer++;
+		}
+		rc = sibling.insert(key, pid);
+		if (rc < 0) {
+			cerr << "BTreeindex::insertAndSplit failed because of insert this" << endl;
+			return rc;
+		}
+		this->keyCount = oldTotalSize - oldTotalSize / 2;
+	}
+	return 0;
+
+}
+
+/*
+ * Given the searchKey, find the child-node pointer to follow and
+ * output it in pid.
+ * @param searchKey[IN] the searchKey that is being looked up.
+ * @param pid[OUT] the pointer to the child node to follow.
+ * @return 0 if successful. Return an error code if there is an error.
+ */
+RC BTNonLeafNode::locateChildPtr(int searchKey, PageId& pid) {
+	int i;
+	char* c;
+	c = this->buffer;
+	PageId* pagePointer = (PageId*)c;
+	pagePointer++;
+	nl_tuple* tuplePointer = (nl_tuple*)pagePointer;//dynamic_cast<l_tuple*>(c);
+	for (i = 0; i < keyCount; i++) 
+	{
+		if (i == 0 && tuplePointer->key > searchKey) {
+			char* d;
+			d = this->buffer;
+			pagePointer = (PageId*)d;
+			pid = *pagePointer;
+			return 0;
+		}
+		if (i == keyCount -1) {
+			pid = tuplePointer->pid;
+			return 0;
+		}
+		if (tuplePointer->key < searchKey && (tuplePointer + 1)->key <= searchKey) {
+			tuplePointer++;
+		}
+		else if (tuplePointer->key == searchKey) {
+			pid = tuplePointer->pid;
+			return 0;
+		}
+		else if (tuplePointer->key < searchKey && (tuplePointer + 1)->key > searchKey) {
+			pid = tuplePointer->pid;
+			return 0;
+		}
+		else {
+			return -1;
+		}
+	}
+	return -1;
+}
+
+/*
+ * Initialize the root node with (pid1, key, pid2).
+ * @param pid1[IN] the first PageId to insert
+ * @param key[IN] the key that should be inserted between the two PageIds
+ * @param pid2[IN] the PageId to insert behind the key
+ * @return 0 if successful. Return an error code if there is an error.
+ */
+RC BTNonLeafNode::initializeRoot(PageId pid1, int key, PageId pid2) {
+	// char* c;
+	// c = this->buffer;
+	// PageId* pagePointer = (PageId*)c;
+	// *pagePointer = pid1;
+	this->firstPointer = pid1;
+	return this->insert(key,pid2); 
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
