@@ -112,11 +112,39 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
   {
     has_index = true;
   }
+
+  if(attr == 4 && key_conditions.empty())
+  {
+    // struct SelCond {
+    //   int attr;     // attribute: 1 - key column,  2 - value column
+    //   enum Comparator { EQ, NE, LT, GT, LE, GE } comp;
+    //   char* value;  // the value to compare
+    // };
+
+    has_index = true;
+    SelCond d;
+    d.attr = 1;
+    d.comp = SelCond::GT;
+    d.value = "-1";
+    organized_everything.clear();
+    organized_everything.push_back(d);
+    for(int i = 0; i < organized_key_conditions.size(); i++)
+    {
+      organized_everything.push_back(organized_key_conditions[i]);
+    }
+
+    for(int i = 0; i < value_conditions.size(); i++)
+    {
+      organized_everything.push_back(value_conditions[i]);
+    }
+  }
+
   //////////////////////////////////////////////////////////////////////
 
   //What we need to do if we read the tree
   if (has_index == true)
   { 
+    cerr << endl << endl << "Going to use the index" << endl << endl;
     RecordId r_id;
     IndexCursor ic;
     int key_value;
@@ -131,6 +159,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
     {
       case SelCond::EQ:
       {
+        cerr << endl << endl << "Using equality condition" << endl << endl;
         bool toPrintThis = true;
         int key_v;
         rc = index_file.locate(key_value, ic);
@@ -284,7 +313,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
         }
         if (toPrintThis)
         {
-          count++;//add count if we can print this only entry (so count will be 1)
+          // count++;//add count if we can print this only entry (so count will be 1)
           switch(attr)
           {
             case 1:  // SELECT key
@@ -296,12 +325,16 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
             case 3:  // SELECT *
               fprintf(stdout, "%d '%s'\n", key_v, value.c_str());
               break;
+            case 4:
+              count++;
+              break;
           }
         }             
         break;
       }
       case SelCond::NE: //done ... maybe
       {
+        cerr << endl << endl << "Using non-equality condition" << endl << endl;
         //If the first condition is key not equal something, we might as well read the whole record, so we no longer read b+ tree
         has_index = false;
         goto next_;
@@ -311,6 +344,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
       case SelCond::LE:
       case SelCond::LT:
       {
+        cerr << endl << endl << "Using less than condition" << endl << endl;
         //try to locate the entry that holds the key value
         rc = index_file.locate(key_value, ic);
         //mark the boundary, this is where we stop reading more leaf nodes
@@ -520,13 +554,13 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
           // print the tuple 
           if(toPrintThis)
           {
-            if (((SelCond::LT == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
-                        (boundary.pid == leafIterator.pid && boundary.eid > leafIterator.eid))) ||
-                    ((SelCond::LE == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
-                        (boundary.pid == leafIterator.pid && boundary.eid >= leafIterator.eid))))
-            {
-              count++;
-            }
+            // if (((SelCond::LT == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
+            //             (boundary.pid == leafIterator.pid && boundary.eid > leafIterator.eid))) ||
+            //         ((SelCond::LE == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
+            //             (boundary.pid == leafIterator.pid && boundary.eid >= leafIterator.eid))))
+            // {
+            //   count++;
+            // }
             switch (attr) 
             {
               case 1:  // SELECT key
@@ -562,6 +596,18 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
                   break;
                 }
               }
+              case 4:
+              {
+                if (((SelCond::LT == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
+                        (boundary.pid == leafIterator.pid && boundary.eid > leafIterator.eid))) ||
+                    ((SelCond::LE == organized_everything[0].comp) && ((boundary.pid != leafIterator.pid) || 
+                        (boundary.pid == leafIterator.pid && boundary.eid >= leafIterator.eid))))
+                {
+                  count++;
+                  break;
+                }
+              }
+
             }
           }
 
@@ -638,10 +684,15 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
       case SelCond::GT:
       case SelCond::GE:
       {
+        //cerr << endl << endl << "Using greater than condition" << endl << endl;
         //To locate the entry
         rc = index_file.locate(key_value, ic);
-        if (rc == RC_END_OF_TREE)
+        cerr << endl << endl << "We are at page " << ic.pid << " entry number " << ic.eid << endl << endl; 
+        BTLeafNode bblt;
+        bblt.read(ic.pid, *index_file.getPageFile());
+        if (rc == RC_END_OF_TREE && ic.eid == bblt.getKeyCount())
         {
+          cerr << endl <<"END OF THE TREE" << endl;
           break;
         }
         if (rc == 0 && SelCond::GT == organized_everything[0].comp)
@@ -664,6 +715,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
           {
             cerr << endl << "Reading the first leaf node faield" << endl << endl;
           }
+          //cerr << endl << endl << "We are at page " << leafIterator.pid << " entry number " << leafIterator.eid << endl << endl; 
           PageId sister_Pid = l_node.get_sister_pointer();
           int keyCount_thisNode = l_node.getKeyCount();
           bool toPrintThis = true;
@@ -808,10 +860,10 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
           }
           if(toPrintThis)
           {
-            if (!(sister_Pid == -1 && leafIterator.eid >= keyCount_thisNode))
-            {
-              count++;
-            }
+            // if (!(sister_Pid == -1 && leafIterator.eid >= keyCount_thisNode))
+            // {
+            //   count++;
+            // }
             switch(attr)
             {
               case 1:
@@ -835,6 +887,14 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
                 if (!(sister_Pid == -1 && leafIterator.eid >= keyCount_thisNode))
                 {
                   fprintf(stdout, "%d '%s'\n", key_v, value.c_str());
+                  break;
+                }
+              }
+              case 4:
+              {
+                if (!(sister_Pid == -1 && leafIterator.eid >= keyCount_thisNode))
+                {
+                  count++;
                   break;
                 }
               }
@@ -889,6 +949,7 @@ RC SqlEngine::select(int attr, const string& table, const vector<SelCond>& cond)
   //old code from the function before time
   if (has_index == false)
   {
+    cerr << endl << endl << "Not using the index" << endl << endl;
     RecordId   rid;  // record cursor for table scanning
     int    key;
     string value;
