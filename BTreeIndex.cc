@@ -409,13 +409,32 @@ RC BTreeIndex::locate(int searchKey, IndexCursor& cursor) {
 		cerr << "BTreeindex::locate failed because of read btn" << endl;
 		return rc;
 	}
-	rc = btn.read(this->rootPid, pf);
+	rc = btl.read(this->rootPid, pf); //load the root as a leaf first
 	cerr << "Reading from the rootPid " << this->rootPid << endl << endl;
 	if (rc < 0) {
 		cerr << "BTreeindex::locate failed because of read btn" << endl;
 		return rc;
 	}
+
 	bool isLeaf = false;
+
+	//if the root is still a leaf, we only need to look within the leaf
+	if(btl.IsLeafNode() == true)
+	{	
+		cursor.pid = this->rootPid;
+		btl.locate(searchKey, cursor.eid);
+		return RC_END_OF_TREE;	
+	}
+	else
+	{
+		rc = btn.read(this->rootPid, pf); //load the root as a leaf first
+		cerr << "Reading from the rootPid " << this->rootPid << endl << endl;
+		if (rc < 0) {
+			cerr << "BTreeindex::locate failed because of read btn" << endl;
+			return rc;
+		}	
+	}
+
 	while (!isLeaf) {
 		rc = btn.locateChildPtr(searchKey, pid);
 		if (rc < 0) {
@@ -434,13 +453,18 @@ RC BTreeIndex::locate(int searchKey, IndexCursor& cursor) {
 		cerr << "BTreeindex::locate failed because of read btl" << endl;
 		return rc;
 	}
-	if (btl.get_sister_pointer() == -1)
-	{
-		return RC_END_OF_TREE;
-	}
+	cerr << endl << endl << "The input to locate is " << searchKey << endl; 
 	rc = btl.locate(searchKey, cursor.eid);
+	cerr << endl << endl << "We got that the pid is " << cursor.pid 
+	<< " and the entry id is " << cursor.eid << endl << endl;
+
 	cursor.pid = pid;
 	cerr << endl << "The cursor is pointing at page " << cursor.pid << " , entry number " << cursor.eid << endl;
+	if (btl.get_sister_pointer() == -1)
+	{
+		cerr << endl << "It gets in here" << endl;
+		return RC_END_OF_TREE;
+	}
 	return rc;
 }
 
